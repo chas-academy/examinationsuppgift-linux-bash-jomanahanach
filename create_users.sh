@@ -1,58 +1,85 @@
 #!/bin/bash
 
-# Script to create users, home folders, private subfolders,
-# and a welcome file for each user.
+# =========================================================
+# create_users.sh
+# Skapar användare utifrån argument till scriptet.
+# För varje användare skapas:
+#   - hemkatalog
+#   - grupp
+#   - mapparna Documents, Downloads och Work
+#   - filen welcome.txt
+#
+# Scriptet får endast köras av root.
+# Exempel:
+#   ./create_users.sh Anna Bjorn Charlie
+# =========================================================
 
-# Check that the script is run as root
+# Kontrollera att scriptet körs som root
 if [ "$EUID" -ne 0 ]; then
     echo "Fel: Endast root får köra detta script."
     exit 1
 fi
 
-# Check that at least one username is provided
-if [ $# -eq 0 ]; then
-    echo "Användning: $0 användare1 användare2 användare3"
+# Kontrollera att minst ett användarnamn har skickats in
+if [ "$#" -eq 0 ]; then
+    echo "Användning: $0 användare1 användare2 användare3 ..."
     exit 1
 fi
 
-# Loop through all usernames passed as arguments
-for USERNAME in "$@"; do
-    # Save existing users before creating the new one
-    OTHER_USERS=$(cut -d: -f1 /etc/passwd)
-
-    # Create user with home directory and group
-    useradd -m -U "$USERNAME"
-
-    # Check if user creation succeeded
-    if [ $? -ne 0 ]; then
-        echo "Fel: Kunde inte skapa användaren $USERNAME."
+# ---------------------------------------------------------
+# Första passet: skapa användare och katalogstruktur
+# ---------------------------------------------------------
+for username in "$@"; do
+    # Hoppa över om användaren redan finns
+    if id "$username" >/dev/null 2>&1; then
+        echo "Användaren '$username' finns redan. Hoppar över."
         continue
     fi
 
-    HOMEDIR="/home/$USERNAME"
+    # Skapa användare (systemet skapar oftast grupp automatiskt)
+    useradd -m -s /bin/bash "$username"
 
-    # Create required folders
-    mkdir -p "$HOMEDIR/Documents"
-    mkdir -p "$HOMEDIR/Downloads"
-    mkdir -p "$HOMEDIR/Work"
+    home_dir="/home/$username"
 
-    # Set ownership
-    chown "$USERNAME:$USERNAME" "$HOMEDIR/Documents"
-    chown "$USERNAME:$USERNAME" "$HOMEDIR/Downloads"
-    chown "$USERNAME:$USERNAME" "$HOMEDIR/Work"
+    # Skapa mappar
+    mkdir -p "$home_dir/Documents" "$home_dir/Downloads" "$home_dir/Work"
 
-    # Set permissions so only owner can access folders
-    chmod 700 "$HOMEDIR/Documents"
-    chmod 700 "$HOMEDIR/Downloads"
-    chmod 700 "$HOMEDIR/Work"
+    # Sätt ägare
+    chown -R "$username:$username" "$home_dir"
 
-    # Create welcome file
-    echo "Välkommen $USERNAME" > "$HOMEDIR/welcome.txt"
-    echo "$OTHER_USERS" | grep -v "^$USERNAME$" >> "$HOMEDIR/welcome.txt"
+    # Sätt rättigheter (endast ägare)
+    chmod 700 "$home_dir/Documents"
+    chmod 700 "$home_dir/Downloads"
+    chmod 700 "$home_dir/Work"
 
-    # Set ownership and permissions for welcome file
-    chown "$USERNAME:$USERNAME" "$HOMEDIR/welcome.txt"
-    chmod 600 "$HOMEDIR/welcome.txt"
-
-    echo "Användaren $USERNAME har skapats."
+    echo "Skapade användare: $username"
 done
+
+# ---------------------------------------------------------
+# Andra passet: skapa welcome.txt
+# ---------------------------------------------------------
+for username in "$@"; do
+    # Kontrollera att användaren finns
+    if ! id "$username" >/dev/null 2>&1; then
+        continue
+    fi
+
+    home_dir="/home/$username"
+    welcome_file="$home_dir/welcome.txt"
+
+    # Första raden (EXAKT enligt krav)
+    echo "Välkommen $username" > "$welcome_file"
+
+    # Lista alla andra användare
+    getent passwd | cut -d: -f1 | while read -r user; do
+        if [ "$user" != "$username" ]; then
+            echo "$user" >> "$welcome_file"
+        fi
+    done
+
+    # Rätt ägare och rättigheter
+    chown "$username:$username" "$welcome_file"
+    chmod 600 "$welcome_file"
+done
+
+echo "Klart."
