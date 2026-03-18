@@ -17,23 +17,26 @@ fi
 
 # Loop through all usernames passed as arguments
 for USERNAME in "$@"; do
+    # Save list of existing users before creating this user
+    EXISTING_USERS=$(cut -d: -f1 /etc/passwd)
 
-    # Skip if user already exists
-    if id "$USERNAME" &>/dev/null; then
-        echo "Användaren $USERNAME finns redan. Hoppar över."
-        continue
+    # Create group if it does not already exist
+    if ! getent group "$USERNAME" >/dev/null 2>&1; then
+        groupadd "$USERNAME"
     fi
 
-    # Create user with home directory and private group
-    useradd --badname -m -U "$USERNAME"
+    # Create user if it does not already exist
+    if ! id "$USERNAME" >/dev/null 2>&1; then
+        useradd --badname -m -g "$USERNAME" "$USERNAME"
+    fi
 
-    # Check if user creation succeeded
-    if [ $? -ne 0 ]; then
+    # Check if user exists now
+    if ! id "$USERNAME" >/dev/null 2>&1; then
         echo "Fel: Kunde inte skapa användaren $USERNAME."
         continue
     fi
 
-    # Get the actual home directory from the system
+    # Get the user's home directory from the system
     HOMEDIR=$(getent passwd "$USERNAME" | cut -d: -f6)
 
     # Create required folders
@@ -48,15 +51,10 @@ for USERNAME in "$@"; do
     # Create welcome file
     {
         echo "Välkommen $USERNAME"
-        cut -d: -f1 /etc/passwd | grep -v "^$USERNAME$"
+        echo "$EXISTING_USERS" | grep -v "^$USERNAME$"
     } > "$HOMEDIR/welcome.txt"
 
     # Set ownership and permissions for welcome file
-    chown "$USERNAME:$USERNAME" "$HOMEDIR/welcome.txt"
-    chmod 600 "$HOMEDIR/welcome.txt"
-
-    echo "Användaren $USERNAME har skapats."
-done
     chown "$USERNAME:$USERNAME" "$HOMEDIR/welcome.txt"
     chmod 600 "$HOMEDIR/welcome.txt"
 
