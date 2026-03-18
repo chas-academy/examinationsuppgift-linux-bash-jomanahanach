@@ -31,11 +31,26 @@ for ANVÄNDARE in "$@"; do
         continue
     fi
 
-    # Skapa användaren med hemkatalog (-m) och bash som skal (-s)
-    useradd -m -s /bin/bash "$ANVÄNDARE"
+    # Välj skal beroende på vad som finns i systemet
+    if [ -x /bin/bash ]; then
+        SKAL=/bin/bash
+    else
+        SKAL=/bin/sh
+    fi
+
+    # Skapa användaren med hemkatalog (-m) och valt skal (-s)
+    # Avbryt scriptet om useradd misslyckas
+    if ! useradd -m -s "$SKAL" "$ANVÄNDARE"; then
+        echo "Fel: Kunde inte skapa användaren '$ANVÄNDARE'." >&2
+        exit 1
+    fi
     echo "Användare '$ANVÄNDARE' skapad."
 
     HEMKATALOG="/home/$ANVÄNDARE"
+
+    # Skapa hemkatalogen manuellt om useradd inte gjorde det
+    mkdir -p "$HEMKATALOG"
+    chown "$ANVÄNDARE":"$ANVÄNDARE" "$HEMKATALOG"
 
     # ─────────────────────────────────────────
     # 3. KATALOGSTRUKTUR OCH RÄTTIGHETER
