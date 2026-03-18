@@ -1,29 +1,29 @@
 #!/bin/bash
 
-# This script creates users, their home folders,
-# private subfolders, and a welcome file.
+# Script to create users, home folders, private subfolders,
+# and a welcome file for each user.
 
-# Check if script is run as root
+# Check that the script is run as root
 if [ "$EUID" -ne 0 ]; then
     echo "Fel: Endast root får köra detta script."
     exit 1
 fi
 
-# Check if at least one username was provided
+# Check that at least one username is provided
 if [ $# -eq 0 ]; then
     echo "Användning: $0 användare1 användare2 användare3"
     exit 1
 fi
 
-# Loop through all usernames
+# Loop through all usernames passed as arguments
 for USERNAME in "$@"; do
-    # Save current users before creating the new one
+    # Save existing users before creating the new one
     OTHER_USERS=$(cut -d: -f1 /etc/passwd)
 
-    # Create the user with home directory
-    useradd -m "$USERNAME"
+    # Create user with home directory and group
+    useradd -m -U "$USERNAME"
 
-    # Stop this iteration if user creation failed
+    # Check if user creation succeeded
     if [ $? -ne 0 ]; then
         echo "Fel: Kunde inte skapa användaren $USERNAME."
         continue
@@ -37,9 +37,11 @@ for USERNAME in "$@"; do
     mkdir -p "$HOMEDIR/Work"
 
     # Set ownership
-    chown -R "$USERNAME:$USERNAME" "$HOMEDIR"
+    chown "$USERNAME:$USERNAME" "$HOMEDIR/Documents"
+    chown "$USERNAME:$USERNAME" "$HOMEDIR/Downloads"
+    chown "$USERNAME:$USERNAME" "$HOMEDIR/Work"
 
-    # Set folder permissions
+    # Set permissions so only owner can access folders
     chmod 700 "$HOMEDIR/Documents"
     chmod 700 "$HOMEDIR/Downloads"
     chmod 700 "$HOMEDIR/Work"
@@ -48,7 +50,9 @@ for USERNAME in "$@"; do
     echo "Välkommen $USERNAME" > "$HOMEDIR/welcome.txt"
     echo "$OTHER_USERS" | grep -v "^$USERNAME$" >> "$HOMEDIR/welcome.txt"
 
-    # Set file ownership and permissions
+    # Set ownership and permissions for welcome file
     chown "$USERNAME:$USERNAME" "$HOMEDIR/welcome.txt"
     chmod 600 "$HOMEDIR/welcome.txt"
+
+    echo "Användaren $USERNAME har skapats."
 done
