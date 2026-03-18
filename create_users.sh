@@ -1,54 +1,94 @@
 #!/bin/bash
+# create_users.sh
+# Syfte: Skapar användare med hemkataloger, undermappar och välkomstfil.
+# Användning: ./create_users.sh Anna Bjorn Charlie
 
-# Skapar användare, hemkatalog, mappar och welcome.txt
-
-# Kontrollera att scriptet körs som root.
-# Om sudo utan lösenord finns, kör om scriptet med sudo.
+# ─────────────────────────────────────────────
+# 1. BEHÖRIGHETSKONTROLL – Endast root får köra
+# ─────────────────────────────────────────────
 if [ "$EUID" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-        exec sudo "$0" "$@"
-    else
-        echo "Fel: Endast root får köra detta script."
-        exit 1
-    fi
-fi
-
-# Kontrollera att minst ett användarnamn skickats in
-if [ "$#" -eq 0 ]; then
-    echo "Användning: $0 användare1 användare2 användare3"
+    echo "Fel: Du måste vara root för att köra detta script." >&2
     exit 1
 fi
 
-# Första passet: skapa användare
-for username in "$@"; do
-    useradd -m -U "$username"
-done
+# Kontrollera att minst ett användarnamn skickades in
+if [ "$#" -eq 0 ]; then
+    echo "Användning: $0 <användare1> [användare2] ..." >&2
+    exit 1
+fi
 
-# Andra passet: skapa mappar och welcome.txt
-for username in "$@"; do
-    home_dir="/home/$username"
-    welcome_file="$home_dir/welcome.txt"
+# ─────────────────────────────────────────────
+# 2. SKAPA ANVÄNDARE OCH KATALOGER (första passet)
+# ─────────────────────────────────────────────
+# Vi sparar vilka användare som faktiskt skapades
+SKAPADE=()
 
-    mkdir -p "$home_dir/Documents"
-    mkdir -p "$home_dir/Downloads"
-    mkdir -p "$home_dir/Work"
+for ANVÄNDARE in "$@"; do
 
-    chown -R "$username:$username" "$home_dir"
+    # Kontrollera om användaren redan finns
+    if id "$ANVÄNDARE" &>/dev/null; then
+        echo "Varning: Användaren '$ANVÄNDARE' finns redan – hoppar över."
+        continue
+    fi
 
-    chmod 700 "$home_dir/Documents"
-    chmod 700 "$home_dir/Downloads"
-    chmod 700 "$home_dir/Work"
+    # Skapa användaren med hemkatalog (-m) och bash som skal (-s)
+    useradd -m -s /bin/bash "$ANVÄNDARE"
+    echo "Användare '$ANVÄNDARE' skapad."
 
-    echo "Välkommen $username" > "$welcome_file"
+    HEMKATALOG="/home/$ANVÄNDARE"
 
-    getent passwd | cut -d: -f1 | while read -r user; do
-        if [ "$user" != "$username" ]; then
-            echo "$user" >> "$welcome_file"
-        fi
+    # ─────────────────────────────────────────
+    # 3. KATALOGSTRUKTUR OCH RÄTTIGHETER
+    # ─────────────────────────────────────────
+
+    # Skapa undermapparna Documents, Downloads och Work
+    for MAPP in Documents Downloads Work; do
+        mkdir -p "$HEMKATALOG/$MAPP"
+
+        # 700 = endast ägaren kan läsa/skriva/köra
+        chmod 700 "$HEMKATALOG/$MAPP"
+
+        # Se till att användaren äger sina egna mappar
+        chown "$ANVÄNDARE":"$ANVÄNDARE" "$HEMKATALOG/$MAPP"
     done
 
-    chown "$username:$username" "$welcome_file"
-    chmod 600 "$welcome_file"
+    echo "  → Undermappar (Documents, Downloads, Work) skapade med rättigheter 700."
+
+    # Lägg till i listan över skapade användare
+    SKAPADE+=("$ANVÄNDARE")
 done
 
-echo "Klart."
+# ─────────────────────────────────────────────
+# 4. VÄLKOMSTMEDDELANDE (andra passet)
+# Nu är ALLA användare skapade, så /etc/passwd är komplett.
+# ─────────────────────────────────────────────
+for ANVÄNDARE in "${SKAPADE[@]}"; do
+
+    HEMKATALOG="/home/$ANVÄNDARE"
+    VÄLKOMSTFIL="$HEMKATALOG/welcome.txt"
+
+    # Rad 1: Personligt välkomstmeddelande
+    echo "Välkommen $ANVÄNDARE" > "$VÄLKOMSTFIL"
+
+    # Tom rad för läsbarhet
+    echo "" >> "$VÄLKOMSTFIL"
+
+    # Lista alla andra vanliga användare (UID 1000–59999) utom denna användare
+    echo "Andra användare på systemet:" >> "$VÄLKOMSTFIL"
+    while IFS=: read -r NAMN _ UID _; do
+        if [ "$UID" -ge 1000 ] && [ "$UID" -lt 60000 ] && [ "$NAMN" != "$ANVÄNDARE" ]; then
+            echo "  - $NAMN" >> "$VÄLKOMSTFIL"
+        fi
+    done < /etc/passwd
+
+    # Sätt ägare och rättigheter på välkomstfilen
+    chown "$ANVÄNDARE":"$ANVÄNDARE" "$VÄLKOMSTFIL"
+    chmod 600 "$VÄLKOMSTFIL"
+
+    echo "  → Välkomstfil skapad: $VÄLKOMSTFIL"
+
+done
+
+echo ""
+echo "Klart! Alla angivna användare har behandlats."
+exit 0
