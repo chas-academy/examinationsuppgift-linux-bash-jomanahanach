@@ -25,7 +25,7 @@ for USERNAME in "$@"; do
     fi
 
     # Create user with home directory and private group
-    useradd -m -U "$USERNAME"
+    useradd --badname -m -U "$USERNAME"
 
     # Check if user creation succeeded
     if [ $? -ne 0 ]; then
@@ -33,13 +33,14 @@ for USERNAME in "$@"; do
         continue
     fi
 
-    HOMEDIR="/home/$USERNAME"
+    # Get the actual home directory from the system
+    HOMEDIR=$(getent passwd "$USERNAME" | cut -d: -f6)
 
     # Create required folders
     mkdir -p "$HOMEDIR/Documents" "$HOMEDIR/Downloads" "$HOMEDIR/Work"
 
     # Set ownership
-    chown -R "$USERNAME:$USERNAME" "$HOMEDIR"
+    chown "$USERNAME:$USERNAME" "$HOMEDIR/Documents" "$HOMEDIR/Downloads" "$HOMEDIR/Work"
 
     # Set permissions so only owner can access folders
     chmod 700 "$HOMEDIR/Documents" "$HOMEDIR/Downloads" "$HOMEDIR/Work"
@@ -51,6 +52,11 @@ for USERNAME in "$@"; do
     } > "$HOMEDIR/welcome.txt"
 
     # Set ownership and permissions for welcome file
+    chown "$USERNAME:$USERNAME" "$HOMEDIR/welcome.txt"
+    chmod 600 "$HOMEDIR/welcome.txt"
+
+    echo "Användaren $USERNAME har skapats."
+done
     chown "$USERNAME:$USERNAME" "$HOMEDIR/welcome.txt"
     chmod 600 "$HOMEDIR/welcome.txt"
 
