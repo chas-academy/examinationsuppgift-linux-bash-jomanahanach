@@ -1,25 +1,34 @@
 #!/bin/bash
 
-# Script to create users, home folders, private subfolders,
-# and a welcome file for each user.
+# Script som skapar användare, hemkataloger, undermappar
+# och en personlig welcome.txt för varje användare.
 
-# Check that the script is run as root
+# Kontrollera att scriptet körs som root.
+# Om användaren har sudo-rättigheter körs scriptet om med sudo.
 if [ "$EUID" -ne 0 ]; then
-    echo "Fel: Endast root får köra detta script."
-    exit 1
+    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+        exec sudo "$0" "$@"
+    else
+        echo "Fel: Endast root får köra detta script."
+        exit 1
+    fi
 fi
 
-# Check that at least one username is provided
+# Kontrollera att minst ett användarnamn skickats in
 if [ "$#" -eq 0 ]; then
     echo "Användning: $0 användare1 användare2 användare3"
     exit 1
 fi
 
-# First pass: create users and folders
+# Första passet: skapa användare med hemkatalog och grupp
 for username in "$@"; do
-    useradd -m "$username"
+    useradd -m -U "$username"
+done
 
+# Andra passet: skapa mappar, rättigheter och welcome.txt
+for username in "$@"; do
     home_dir="/home/$username"
+    welcome_file="$home_dir/welcome.txt"
 
     mkdir -p "$home_dir/Documents"
     mkdir -p "$home_dir/Downloads"
@@ -30,12 +39,6 @@ for username in "$@"; do
     chmod 700 "$home_dir/Documents"
     chmod 700 "$home_dir/Downloads"
     chmod 700 "$home_dir/Work"
-done
-
-# Second pass: create welcome.txt
-for username in "$@"; do
-    home_dir="/home/$username"
-    welcome_file="$home_dir/welcome.txt"
 
     echo "Välkommen $username" > "$welcome_file"
 
@@ -48,3 +51,5 @@ for username in "$@"; do
     chown "$username:$username" "$welcome_file"
     chmod 600 "$welcome_file"
 done
+
+echo "Klart."
